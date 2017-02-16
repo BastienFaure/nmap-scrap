@@ -1,0 +1,252 @@
+#!/usr/bin/env python
+# coding: utf8
+
+import logging
+from logging.handlers import RotatingFileHandler
+import argparse
+import subprocess
+import progressbar
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+import requests
+from termcolor import colored
+from slugify import slugify
+from datetime import datetime
+import codecs
+import time
+import sys
+import os
+import copy
+from multiprocessing.dummy import Pool as ThreadPool
+from libnmap.parser import NmapParser
+
+valid_chars = '-_.()abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
+UA = "Mozilla/5.0 (X11; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0"
+headers = dict()
+headers['user-agent'] = UA
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+NB_THREADS = 20
+
+
+class Target(object):
+
+	def __init__(self, scheme, host, port):
+		self.host = host
+		self.scheme = scheme
+		self.port = port
+
+	def __str__(self):
+		if self.scheme == 'https' and self.port == 443:
+			return "https://%s" % self.host
+		elif self.scheme == 'http' and self.port == 80:
+			return "http://%s" % self.host
+		else:
+			return "%s://%s:%s" % (self.scheme, self.host, self.port)
+
+	def __repr__(self):
+		if self.scheme == 'https' and self.port == 443:
+			return "https://%s" % self.host
+		elif self.scheme == 'http' and self.port == 80:
+			return "http://%s" % self.host
+		else:
+			return "%s://%s:%s" % (self.scheme, self.host, self.port)
+
+	def request(self, path):
+		if path:
+			r = requests.get(str(self) + path, verify=False, timeout=5, headers=headers, allow_redirects=False)
+		else:
+			r = requests.get(str(self), verify=False, timeout=5, headers=headers, allow_redirects=False)
+		return r
+
+
+class HTTPResult(object):
+
+	def __init__(self, response):
+		self.response = response
+
+	@property
+	def code(self):
+		return self.response.status_code
+
+	@property
+	def url(self):
+		return self.response.url
+
+	def __repr__(self):
+		return "[%s] <%s>" % (self.response.status_code, self.url)
+
+	def __str__(self):
+		if self.response.is_redirect:
+			s = requests.session()
+			redirect = s.get_redirect_target(self.response)
+			return "%s => %s (%s bytes)" % (self.url, redirect, len(self.response.text))
+		else:
+			return "%s (%s bytes)" % (self.url, len(self.response.text))
+
+	def __eq__(self, other):
+		return ((self.url == other.url) and (self.code == other.code))
+
+	def __hash__(self):
+		return (hash(self.url) ^ hash(self.code))
+
+
+class ScrapReport(object):
+
+	def __init__(self):
+		self.values = dict()
+
+	def add(self, response):
+		http_result = HTTPResult(response)
+		if http_result.code not in self.values:
+			self.values[http_result.code] = set()
+		self.values[response.status_code].add(http_result)
+
+	@property
+	def urls(self):
+		self._urls = set()
+		for retcode, responses in self.values.iteritems():
+			for response in responses:
+				self._urls.add(response.url)
+		return self._urls
+
+	def __repr__(self):
+		output = ''
+		for i, (retcode, responses) in enumerate(self.values.iteritems()):
+			if not i == 0:
+				output += '\n'
+			title = 'HTTP %s' % retcode
+			output += title
+			output += '\n'
+			output += len(title) * '='
+			output += '\n'
+			output += '\n'
+			for response in responses:
+				output += '  * %s\n' % str(response)
+
+		return output
+
+
+	def save(self, suffix):
+		with open('retcodes_' + suffix, 'w') as outfile:
+			outfile.write(repr(self))
+
+		with open('urls_' + suffix, 'w') as outfile:
+			for url in self.urls:
+				outfile.write('%s\n' % url)
+
+
+class HTTPGrabber(object):
+
+	def __init__(self, path, total):
+		self.path = path
+		self.bar = progressbar.ProgressBar(maxval=total, widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()], term_width=30)
+		self.counter = 0
+
+		print '[%s] Found %d http services' % (colored('*', 'green'), total)
+		print '[%s] Launching %s threads' % (colored('!', 'red'), NB_THREADS)
+		self.report = ScrapReport()
+		self.logger = logging.getLogger()
+		self.logger.setLevel(logging.DEBUG)
+		formatter = logging.Formatter('[%(levelname)s] %(asctime)s :: %(message)s')
+
+		file_handler = RotatingFileHandler('http.log', 'a', 1000000, 1)
+		file_handler.setLevel(logging.DEBUG)
+		file_handler.setFormatter(formatter)
+		self.logger.addHandler(file_handler)
+		self.bar.start()
+
+	def grab(self, target):
+		self.logger.warn(target)
+
+		self.counter += 1
+		self.bar.update(self.counter)
+
+		try:
+			response = target.request(self.path)
+			for resp in response.history:
+				self.report.add(resp)
+			self.report.add(response)
+		except Exception:
+			pass
+
+#			if 'Error' not in results:
+#				results['Error'] = []
+#			results['Error'].append(str(target) + ' ' + type(e).__name__)
+
+
+if __name__ == "__main__":
+	parser = argparse.ArgumentParser("Nmap helper")
+	subparsers = parser.add_subparsers(help='sub-command help', dest="subparser_name")
+
+	# http subparser
+	http_parser = subparsers.add_parser('http', help='Perform an HTTP analysis')
+	http_parser.add_argument("--sc", help="HTTP status codes to show", required=False)
+	http_parser.add_argument("--hc", help="HTTP status code to hide", required=False)
+	http_parser.add_argument("--start", help="The start HTTP page", required=False, default=None)
+	http_parser.add_argument("--screen", help="Takes a screenshot of each http service", action="store_true", required=False)
+	http_parser.add_argument("--save", help="Persistent output", required=False, action="store_true")
+
+	# port subparser
+	port_parser = subparsers.add_parser('port', help='Returns a listing based on port state')
+	port_parser.add_argument("--port", "-p", type=int, help="", required=False)
+	port_parser.add_argument("--state", "-s", type=str, help="", required=False)
+
+	parser.add_argument("xml_file", help="The nmap XML output", nargs='+')
+	args = parser.parse_args()
+	nmap_file = args.xml_file[0]
+	targets = []
+	print '[%s] Parsing file %s' % (colored('*', 'green'), nmap_file)
+	if args.subparser_name == 'http':
+		nmap_report = NmapParser.parse_fromfile(nmap_file)
+		start = args.start
+		for host in nmap_report.hosts:
+			for svc in host.services:
+				if (svc.service == 'http' or svc.service == 'https') and svc.state == 'open':
+					if svc.tunnel == 'ssl':
+						targets.append(Target('https', host.address, svc.port))
+					else:
+						targets.append(Target('http', host.address, svc.port))
+					for hostname in host.hostnames:
+						if svc.tunnel == 'ssl':
+							targets.append(Target('https', hostname, svc.port))
+						else:
+							targets.append(Target('http', hostname, svc.port))
+
+		total = len(targets)
+		httpgrabber = HTTPGrabber(args.start, total)
+
+		pool = ThreadPool(NB_THREADS)
+		pool.map(httpgrabber.grab, targets)
+		pool.close()
+		pool.join()
+
+		httpgrabber.bar.finish()
+		print httpgrabber.report
+
+		if args.save:
+			suffix = ''
+			if args.start:
+				suffix += slugify(unicode(start))
+			suffix += slugify(unicode(str(datetime.now())))
+			httpgrabber.report.save(suffix)
+
+		if args.screen:
+			if not os.path.isdir('screenshots'):
+				os.mkdir('screenshots')
+
+			for url in httpgrabber.report.urls:
+				subprocess.call([os.path.dirname(__file__) + '/massws', '-s', '-o', 'screenshots/%s.png' % ''.join(c for c in url.replace('://', '_').replace('/', '_').replace(':', '_') if c in valid_chars), url])
+	elif args.subparser_name == "port":
+		nmap_report = NmapParser.parse_fromfile(nmap_file)
+		for host in nmap_report.hosts:
+			if args.port and not args.state:
+				for svc in host.services:
+					if svc.port == args.port:
+						print host.address
+			elif args.port and args.state:
+				for svc in host.services:
+					if svc.state == args.state and svc.port == args.port:
+						print host.address
+			else:
+				print host.address
