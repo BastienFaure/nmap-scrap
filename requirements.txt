@@ -1,0 +1,9 @@
+progressbar
+logging
+argparse
+git+git://github.com/kennethreitz/requests@master#egg=requests
+termcolor
+slugify
+datetime
+multiprocessing
+python-libnmap
