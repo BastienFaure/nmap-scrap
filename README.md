@@ -18,6 +18,7 @@ Please not at the time of writing this file, a feature only available on python-
 # Usage
 
 First, perform a basic network scan and save output in XML format: 
+
 	$ nmap -oX google.fr.xml google.fr
 
 ## HTTP scraping
