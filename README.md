@@ -1,8 +1,21 @@
 # nmap-scrap
 
-HTTP exploration utility based on Nmap XML outputs.
+`nmap-scrap` is an HTTP exploration utility based on Nmap XML outputs. This tool aims to address discovering issues when dealing with large scopes by parsing Nmap XML outputs and extracting only required information.
 
-This tool aims to address discovering issues when dealing with large scopes.
+
+# Installation
+
+## Python dependencies
+
+Please not at the time of writing this file, a feature only available on python-requests upstream was required but not provided with pypy bundled version.
+
+	pip install -r requirements.txt
+
+## massws
+
+	TODO
+
+# Usage
 
 A typical workflow looks like:
 
