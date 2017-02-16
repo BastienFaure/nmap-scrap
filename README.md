@@ -50,7 +50,7 @@ First, perform a basic network scan and save output in XML format:
 	  --save         Persistent output
 
 
-## Listing hosts exposing a specific services
+## Listing hosts exposing a specific service
 
 Pentesters usually want to automate some basic tasks like authentication requests on specific services. Having a list of hosts exposing the wanted service (.e.g port 22 or 445) is made easy with `nmap-scrap`:
 
