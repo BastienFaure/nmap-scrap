@@ -181,8 +181,8 @@ if __name__ == "__main__":
 
 	# http subparser
 	http_parser = subparsers.add_parser('http', help='Perform an HTTP analysis')
-	http_parser.add_argument("--sc", help="HTTP status codes to show", required=False)
-	http_parser.add_argument("--hc", help="HTTP status code to hide", required=False)
+	#http_parser.add_argument("--sc", help="HTTP status codes to show", required=False)
+	#http_parser.add_argument("--hc", help="HTTP status code to hide", required=False)
 	http_parser.add_argument("--start", help="The start HTTP page", required=False, default=None)
 	http_parser.add_argument("--screen", help="Takes a screenshot of each http service", action="store_true", required=False)
 	http_parser.add_argument("--save", help="Persistent output", required=False, action="store_true")
