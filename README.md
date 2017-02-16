@@ -17,9 +17,11 @@ Please not at the time of writing this file, a feature only available on python-
 
 # Usage
 
-A typical workflow looks like:
-
+First, perform a basic network scan and save output in XML format: 
 	$ nmap -oX google.fr.xml google.fr
+
+## HTTP scraping
+
 	$ ./nmap-scrap http google.fr.xml 
 	[*] Parsing file /tmp/google.fr.xml
 	[*] Found 6 http services
@@ -46,4 +48,12 @@ A typical workflow looks like:
 	  --start START  The start HTTP page
 	  --screen       Takes a screenshot of each http service
 	  --save         Persistent output
+
+
+## Listing hosts exposing a specific services
+
+Pentesters usually want to automate some basic tasks like authentication requests on specific services. Having a list of hosts exposing the wanted service (.e.g port 22 or 445) is made easy with `nmap-scrap`:
+
+	$ ./nmap-scrap port -p 80 -s open google.fr.xml
+	216.58.204.131
 

@@ -196,8 +196,8 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	nmap_file = args.xml_file[0]
 	targets = []
-	print '[%s] Parsing file %s' % (colored('*', 'green'), nmap_file)
 	if args.subparser_name == 'http':
+		print '[%s] Parsing file %s' % (colored('*', 'green'), nmap_file)
 		nmap_report = NmapParser.parse_fromfile(nmap_file)
 		start = args.start
 		for host in nmap_report.hosts:
