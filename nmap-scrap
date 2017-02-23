@@ -95,12 +95,20 @@ class ScrapReport(object):
 
 	def __init__(self):
 		self.values = dict()
+		self.shown_codes = []
+		self.hidden_codes = []
 
 	def add(self, response):
 		http_result = HTTPResult(response)
 		if http_result.code not in self.values:
 			self.values[http_result.code] = set()
 		self.values[response.status_code].add(http_result)
+
+	def show_code(self, code):
+		self.shown_codes.append(code)
+
+	def hide_code(self, code):
+		self.hidden_codes.append(code)
 
 	@property
 	def urls(self):
@@ -110,22 +118,32 @@ class ScrapReport(object):
 				self._urls.add(response.url)
 		return self._urls
 
-	def __repr__(self):
-		output = ''
-		for i, (retcode, responses) in enumerate(self.values.iteritems()):
-			if not i == 0:
-				output += '\n'
-			title = 'HTTP %s' % retcode
-			output += title
+	def report_by_code(self, code):
+		if code in self.values.keys():
+			title = 'HTTP %s' % code
+			output = title
 			output += '\n'
 			output += len(title) * '='
-			output += '\n'
-			output += '\n'
-			for response in responses:
+			output += '\n\n'
+			for response in self.values[code]:
 				output += '  * %s\n' % str(response)
+			output += '\n'
+			return output
+
+	def __repr__(self):
+		output = ''
+		if self.shown_codes:
+			for shown_code in self.shown_codes:
+				output += self.report_by_code(shown_code)
+		elif self.hidden_codes:
+			for retcode in self.values.keys():
+				if retcode not in self.hidden_codes:
+					output += self.report_by_code(retcode)
+		else:
+			for retcode in self.values.keys():
+				output += self.report_by_code(retcode)
 
 		return output
-
 
 	def save(self, suffix):
 		with open('retcodes_' + suffix, 'w') as outfile:
@@ -181,8 +199,8 @@ if __name__ == "__main__":
 
 	# http subparser
 	http_parser = subparsers.add_parser('http', help='Perform an HTTP analysis')
-	#http_parser.add_argument("--sc", help="HTTP status codes to show", required=False)
-	#http_parser.add_argument("--hc", help="HTTP status code to hide", required=False)
+	http_parser.add_argument("--sc", help="HTTP status codes to show", required=False, default=None, type=int)
+	http_parser.add_argument("--hc", help="HTTP status code to hide", required=False, default=None, type=int)
 	http_parser.add_argument("--start", help="The start HTTP page", required=False, default=None)
 	http_parser.add_argument("--screen", help="Takes a screenshot of each http service", action="store_true", required=False)
 	http_parser.add_argument("--save", help="Persistent output", required=False, action="store_true")
@@ -222,6 +240,12 @@ if __name__ == "__main__":
 		pool.join()
 
 		httpgrabber.bar.finish()
+
+		if args.hc:
+			httpgrabber.report.hide_code(args.hc)
+
+		if args.sc:
+			httpgrabber.report.show_code(args.sc)
 		print httpgrabber.report
 
 		if args.save:
