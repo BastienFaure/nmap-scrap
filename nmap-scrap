@@ -203,12 +203,12 @@ if __name__ == "__main__":
 		for host in nmap_report.hosts:
 			for svc in host.services:
 				if (svc.service == 'http' or svc.service == 'https') and svc.state == 'open':
-					if svc.tunnel == 'ssl':
+					if svc.tunnel == 'ssl' or svc.service == 'https':
 						targets.append(Target('https', host.address, svc.port))
 					else:
 						targets.append(Target('http', host.address, svc.port))
 					for hostname in host.hostnames:
-						if svc.tunnel == 'ssl':
+						if svc.tunnel == 'ssl' or svc.service == 'https':
 							targets.append(Target('https', hostname, svc.port))
 						else:
 							targets.append(Target('http', hostname, svc.port))
