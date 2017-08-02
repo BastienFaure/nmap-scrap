@@ -1,4 +1,4 @@
-progressbar
+tqdm
 logging
 argparse
 git+git://github.com/kennethreitz/requests@master#egg=requests

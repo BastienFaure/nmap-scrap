@@ -11,6 +11,7 @@ import requests
 from termcolor import colored
 from slugify import slugify
 from datetime import datetime
+from tqdm import tqdm
 import codecs
 import time
 import sys
@@ -19,11 +20,11 @@ import copy
 from multiprocessing.dummy import Pool as ThreadPool
 from libnmap.parser import NmapParser
 
-valid_chars = '-_.()abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+valid_chars = "-_.()abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 UA = "Mozilla/5.0 (X11; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0"
 headers = dict()
-headers['user-agent'] = UA
+headers["user-agent"] = UA
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 NB_THREADS = 20
@@ -37,17 +38,17 @@ class Target(object):
 		self.port = port
 
 	def __str__(self):
-		if self.scheme == 'https' and self.port == 443:
+		if self.scheme == "https" and self.port == 443:
 			return "https://%s" % self.host
-		elif self.scheme == 'http' and self.port == 80:
+		elif self.scheme == "http" and self.port == 80:
 			return "http://%s" % self.host
 		else:
 			return "%s://%s:%s" % (self.scheme, self.host, self.port)
 
 	def __repr__(self):
-		if self.scheme == 'https' and self.port == 443:
+		if self.scheme == "https" and self.port == 443:
 			return "https://%s" % self.host
-		elif self.scheme == 'http' and self.port == 80:
+		elif self.scheme == "http" and self.port == 80:
 			return "http://%s" % self.host
 		else:
 			return "%s://%s:%s" % (self.scheme, self.host, self.port)
@@ -120,13 +121,13 @@ class ScrapReport(object):
 
 	def report_by_code(self, code):
 		if code in self.values.keys():
-			title = 'HTTP %s' % code
+			title = "HTTP %s" % code
 			output = title
 			output += '\n'
 			output += len(title) * '='
 			output += '\n\n'
 			for response in self.values[code]:
-				output += '  * %s\n' % str(response)
+				output += "  * %s\n" % str(response)
 			output += '\n'
 			return output
 
@@ -146,39 +147,31 @@ class ScrapReport(object):
 		return output
 
 	def save(self, suffix):
-		with open('retcodes_' + suffix, 'w') as outfile:
+		with open("retcodes_" + suffix, 'w') as outfile:
 			outfile.write(repr(self))
 
-		with open('urls_' + suffix, 'w') as outfile:
+		with open("urls_" + suffix, 'w') as outfile:
 			for url in self.urls:
-				outfile.write('%s\n' % url)
+				outfile.write("%s\n" % url)
 
 
 class HTTPGrabber(object):
 
-	def __init__(self, path, total):
+	def __init__(self, path):
 		self.path = path
-		self.bar = progressbar.ProgressBar(maxval=total, widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()], term_width=30)
-		self.counter = 0
 
-		print '[%s] Found %d http services' % (colored('*', 'green'), total)
-		print '[%s] Launching %s threads' % (colored('!', 'red'), NB_THREADS)
 		self.report = ScrapReport()
 		self.logger = logging.getLogger()
 		self.logger.setLevel(logging.DEBUG)
-		formatter = logging.Formatter('[%(levelname)s] %(asctime)s :: %(message)s')
+		formatter = logging.Formatter("[%(levelname)s] %(asctime)s :: %(message)s")
 
-		file_handler = RotatingFileHandler('http.log', 'a', 1000000, 1)
+		file_handler = RotatingFileHandler("http.log", 'a', 1000000, 1)
 		file_handler.setLevel(logging.DEBUG)
 		file_handler.setFormatter(formatter)
 		self.logger.addHandler(file_handler)
-		self.bar.start()
 
 	def grab(self, target):
 		self.logger.warn(target)
-
-		self.counter += 1
-		self.bar.update(self.counter)
 
 		try:
 			response = target.request(self.path)
@@ -195,7 +188,7 @@ class HTTPGrabber(object):
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser("Nmap helper")
-	subparsers = parser.add_subparsers(help='sub-command help', dest="subparser_name")
+	subparsers = parser.add_subparsers(help="sub-command help", dest="subparser_name")
 
 	# http subparser
 	http_parser = subparsers.add_parser('http', help='Perform an HTTP analysis')
@@ -204,6 +197,7 @@ if __name__ == "__main__":
 	http_parser.add_argument("--start", help="The start HTTP page", required=False, default=None)
 	http_parser.add_argument("--screen", help="Takes a screenshot of each http service", action="store_true", required=False)
 	http_parser.add_argument("--save", help="Persistent output", required=False, action="store_true")
+	http_parser.add_argument("--threads", "-t", help="Number of threads to run", required=False, type=int, default=20)
 
 	# port subparser
 	port_parser = subparsers.add_parser('port', help='Returns a listing based on port state')
@@ -214,32 +208,34 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	nmap_file = args.xml_file[0]
 	targets = []
-	if args.subparser_name == 'http':
-		print '[%s] Parsing file %s' % (colored('*', 'green'), nmap_file)
+	if args.subparser_name == "http":
+		print "[%s] Parsing file %s" % (colored("*", "green"), nmap_file)
 		nmap_report = NmapParser.parse_fromfile(nmap_file)
 		start = args.start
 		for host in nmap_report.hosts:
 			for svc in host.services:
-				if (svc.service == 'http' or svc.service == 'https') and svc.state == 'open':
-					if svc.tunnel == 'ssl' or svc.service == 'https':
-						targets.append(Target('https', host.address, svc.port))
+				if (svc.service == "http" or svc.service == "https") and svc.state == "open":
+					if svc.tunnel == "ssl" or svc.service == "https":
+						targets.append(Target("https", host.address, svc.port))
 					else:
-						targets.append(Target('http', host.address, svc.port))
+						targets.append(Target("http", host.address, svc.port))
 					for hostname in host.hostnames:
-						if svc.tunnel == 'ssl' or svc.service == 'https':
-							targets.append(Target('https', hostname, svc.port))
+						if svc.tunnel == "ssl" or svc.service == "https":
+							targets.append(Target("https", hostname, svc.port))
 						else:
-							targets.append(Target('http', hostname, svc.port))
+							targets.append(Target("http", hostname, svc.port))
 
 		total = len(targets)
-		httpgrabber = HTTPGrabber(args.start, total)
+		httpgrabber = HTTPGrabber(args.start)
 
-		pool = ThreadPool(NB_THREADS)
-		pool.map(httpgrabber.grab, targets)
+		pool = ThreadPool(args.threads)
+		print "[%s] Found %d http services" % (colored('*', "green"), len(targets))
+		print "[%s] Launching %s threads" % (colored('!', "red"), args.threads)
+		with tqdm(targets, ncols=50, bar_format="{percentage:1.0f}%| {bar} | {n_fmt}/{total_fmt}") as pbar:
+			for _ in pool.imap_unordered(httpgrabber.grab, targets):
+				pbar.update()
 		pool.close()
 		pool.join()
-
-		httpgrabber.bar.finish()
 
 		if args.hc:
 			httpgrabber.report.hide_code(args.hc)
@@ -256,11 +252,11 @@ if __name__ == "__main__":
 			httpgrabber.report.save(suffix)
 
 		if args.screen:
-			if not os.path.isdir('screenshots'):
-				os.mkdir('screenshots')
+			if not os.path.isdir("screenshots"):
+				os.mkdir("screenshots")
 
 			for url in httpgrabber.report.urls:
-				subprocess.call([os.path.dirname(__file__) + '/massws', '-s', '-o', 'screenshots/%s.png' % ''.join(c for c in url.replace('://', '_').replace('/', '_').replace(':', '_') if c in valid_chars), url])
+				subprocess.call([os.path.dirname(__file__) + "/massws", "-s", "-o", "screenshots/%s.png" % "".join(c for c in url.replace("://", "_").replace("/", "_").replace(":", "_") if c in valid_chars), url])
 	elif args.subparser_name == "port":
 		nmap_report = NmapParser.parse_fromfile(nmap_file)
 		for host in nmap_report.hosts:
