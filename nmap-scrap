@@ -3,9 +3,11 @@
 
 import logging
 from logging.handlers import RotatingFileHandler
+import uuid
 import argparse
 import subprocess
-import progressbar
+import urlparse
+import re
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import requests
 from termcolor import colored
@@ -28,6 +30,16 @@ headers["user-agent"] = UA
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 NB_THREADS = 20
+
+
+def get_meta_redirect(resp):
+	redirect_re = re.compile('<meta[^>]*?url=(.*?)["\']', re.IGNORECASE)
+	match = redirect_re.search(resp.text)
+	if match:
+		url = urlparse.urljoin(resp.url, match.groups()[0].strip())
+	else:
+		url = None
+	return url
 
 
 class Target(object):
@@ -170,15 +182,34 @@ class HTTPGrabber(object):
 		file_handler.setFormatter(formatter)
 		self.logger.addHandler(file_handler)
 
-	def grab(self, target):
+	def check_meta(self, resp):
+		meta = get_meta_redirect(resp)
+		if meta:
+			url = urlparse.urlparse(meta)
+			# <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
+			redir_path = url.path
+			if url.params:
+				redir_path += ";"
+				redir_path += url.params
+			if url.query:
+				redir_path += "?"
+				redir_path += url.query
+			self.grab(Target(url.scheme, url.hostname, url.port), redir_path)
+
+	def grab(self, target, path=None):
 		self.logger.warn(target)
 
 		try:
-			response = target.request(self.path)
+			if path is not None:
+				response = target.request(path)
+			else:
+				response = target.request(self.path)
 			for resp in response.history:
 				self.report.add(resp)
+				self.check_meta(resp)
 			self.report.add(response)
-		except Exception:
+			self.check_meta(response)
+		except Exception as e:
 			pass
 
 #			if 'Error' not in results:
@@ -206,67 +237,68 @@ if __name__ == "__main__":
 
 	parser.add_argument("xml_file", help="The nmap XML output", nargs='+')
 	args = parser.parse_args()
-	nmap_file = args.xml_file[0]
 	targets = []
 	if args.subparser_name == "http":
-		print "[%s] Parsing file %s" % (colored("*", "green"), nmap_file)
-		nmap_report = NmapParser.parse_fromfile(nmap_file)
-		start = args.start
-		for host in nmap_report.hosts:
-			for svc in host.services:
-				if (svc.service == "http" or svc.service == "https") and svc.state == "open":
-					if svc.tunnel == "ssl" or svc.service == "https":
-						targets.append(Target("https", host.address, svc.port))
-					else:
-						targets.append(Target("http", host.address, svc.port))
-					for hostname in host.hostnames:
+		for nmap_file in args.xml_file:
+			print("[%s] Parsing file %s" % (colored("*", "green"), nmap_file))
+			nmap_report = NmapParser.parse_fromfile(nmap_file)
+			start = args.start
+			for host in nmap_report.hosts:
+				for svc in host.services:
+					if (svc.service == "http" or svc.service == "https") and svc.state == "open":
 						if svc.tunnel == "ssl" or svc.service == "https":
-							targets.append(Target("https", hostname, svc.port))
+							targets.append(Target("https", host.address, svc.port))
 						else:
-							targets.append(Target("http", hostname, svc.port))
+							targets.append(Target("http", host.address, svc.port))
+						for hostname in host.hostnames:
+							if svc.tunnel == "ssl" or svc.service == "https":
+								targets.append(Target("https", hostname, svc.port))
+							else:
+								targets.append(Target("http", hostname, svc.port))
 
-		total = len(targets)
-		httpgrabber = HTTPGrabber(args.start)
+			total = len(targets)
+			httpgrabber = HTTPGrabber(args.start)
 
-		pool = ThreadPool(args.threads)
-		print "[%s] Found %d http services" % (colored('*', "green"), len(targets))
-		print "[%s] Launching %s threads" % (colored('!', "red"), args.threads)
-		with tqdm(targets, ncols=50, bar_format="{percentage:1.0f}%| {bar} | {n_fmt}/{total_fmt}") as pbar:
-			for _ in pool.imap_unordered(httpgrabber.grab, targets):
-				pbar.update()
-		pool.close()
-		pool.join()
+			pool = ThreadPool(args.threads)
+			print("[%s] Found %d http services" % (colored('*', "green"), len(targets)))
+			print("[%s] Launching %s threads" % (colored('!', "red"), args.threads))
+			with tqdm(targets, ncols=50, bar_format="{percentage:1.0f}%| {bar} | {n_fmt}/{total_fmt}") as pbar:
+				for _ in pool.imap_unordered(httpgrabber.grab, targets):
+					pbar.update()
+			pool.close()
+			pool.join()
 
-		if args.hc:
-			httpgrabber.report.hide_code(args.hc)
+			if args.hc:
+				httpgrabber.report.hide_code(args.hc)
 
-		if args.sc:
-			httpgrabber.report.show_code(args.sc)
-		print httpgrabber.report
+			if args.sc:
+				httpgrabber.report.show_code(args.sc)
+			print(httpgrabber.report)
 
-		if args.save:
-			suffix = ''
-			if args.start:
-				suffix += slugify(unicode(start))
-			suffix += slugify(unicode(str(datetime.now())))
-			httpgrabber.report.save(suffix)
+			if args.save:
+				suffix = ''
+				if args.start:
+					suffix += slugify(unicode(start))
+				suffix += slugify(unicode(str(datetime.now())))
+				httpgrabber.report.save(suffix)
 
-		if args.screen:
-			if not os.path.isdir("screenshots"):
-				os.mkdir("screenshots")
+			if args.screen:
+				if not os.path.isdir("screenshots"):
+					os.mkdir("screenshots")
 
-			for url in httpgrabber.report.urls:
-				subprocess.call([os.path.dirname(__file__) + "/massws", "-s", "-o", "screenshots/%s.png" % "".join(c for c in url.replace("://", "_").replace("/", "_").replace(":", "_") if c in valid_chars), url])
+				for url in httpgrabber.report.urls:
+					subprocess.call([os.path.dirname(__file__) + "/massws", "-s", "-o", "screenshots/%s.png" % "".join(c for c in url.replace("://", "_").replace("/", "_").replace(":", "_") if c in valid_chars), url])
 	elif args.subparser_name == "port":
-		nmap_report = NmapParser.parse_fromfile(nmap_file)
-		for host in nmap_report.hosts:
-			if args.port and not args.state:
-				for svc in host.services:
-					if svc.port == args.port:
-						print host.address
-			elif args.port and args.state:
-				for svc in host.services:
-					if svc.state == args.state and svc.port == args.port:
-						print host.address
-			else:
-				print host.address
+		for nmap_file in args.xml_file:
+			nmap_report = NmapParser.parse_fromfile(nmap_file)
+			for host in nmap_report.hosts:
+				if args.port and not args.state:
+					for svc in host.services:
+						if svc.port == args.port:
+							print(host.address)
+				elif args.port and args.state:
+					for svc in host.services:
+						if svc.state == args.state and svc.port == args.port:
+							print(host.address)
+				else:
+					print(host.address)
