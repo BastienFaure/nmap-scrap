@@ -183,7 +183,7 @@ class HTTPGrabber(object):
 	def check_meta(self, resp):
 		meta = get_meta_redirect(resp)
 		if meta:
-			url = urlparse.urlparse(meta)
+			url = urlparse(meta)
 			# <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
 			redir_path = url.path
 			if url.params:
