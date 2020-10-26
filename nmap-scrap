@@ -6,7 +6,9 @@ from logging.handlers import RotatingFileHandler
 import uuid
 import argparse
 import subprocess
-import urlparse
+import progressbar
+from urllib.parse import urlparse, urljoin
+from furl import furl
 import re
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import requests
@@ -14,6 +16,7 @@ from termcolor import colored
 from slugify import slugify
 from datetime import datetime
 from tqdm import tqdm
+import urllib3
 import codecs
 import time
 import sys
