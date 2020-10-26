@@ -40,7 +40,7 @@ def get_meta_redirect(resp):
 	redirect_re = re.compile('<meta[^>]*?url=(.*?)["\']', re.IGNORECASE)
 	match = redirect_re.search(resp.text)
 	if match:
-		url = urlparse.urljoin(resp.url, match.groups()[0].strip())
+		url = urljoin(resp.url, match.groups()[0].strip())
 	else:
 		url = None
 	return url
