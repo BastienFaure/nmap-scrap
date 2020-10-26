@@ -124,7 +124,7 @@ class ScrapReport(object):
 	@property
 	def urls(self):
 		self._urls = set()
-		for retcode, responses in self.values.iteritems():
+		for retcode, responses in self.values.items():
 			for response in responses:
 				self._urls.add(response.url)
 		return self._urls
