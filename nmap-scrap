@@ -53,25 +53,19 @@ class Target(object):
 		self.scheme = scheme
 		self.port = port
 
+	@property
+	def url(self):
+		return furl(scheme=self.scheme, host=self.host, port=self.port)
+
 	def __str__(self):
-		if self.scheme == "https" and self.port == 443:
-			return "https://%s" % self.host
-		elif self.scheme == "http" and self.port == 80:
-			return "http://%s" % self.host
-		else:
-			return "%s://%s:%s" % (self.scheme, self.host, self.port)
+		return self.url.url
 
 	def __repr__(self):
-		if self.scheme == "https" and self.port == 443:
-			return "https://%s" % self.host
-		elif self.scheme == "http" and self.port == 80:
-			return "http://%s" % self.host
-		else:
-			return "%s://%s:%s" % (self.scheme, self.host, self.port)
+		return str(self)
 
 	def request(self, path):
 		if path:
-			r = requests.get(str(self) + path, verify=False, timeout=5, headers=headers, allow_redirects=True)
+			r = requests.get(str(self.url / path), verify=False, timeout=5, headers=headers, allow_redirects=True)
 		else:
 			r = requests.get(str(self), verify=False, timeout=5, headers=headers, allow_redirects=True)
 		return r
