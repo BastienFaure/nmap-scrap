@@ -249,6 +249,8 @@ if __name__ == "__main__":
 						else:
 							targets.append(Target("http", host.address, svc.port))
 						for hostname in host.hostnames:
+							if hostname.endswith("."):
+								hostname = hostname[:-1]
 							if svc.tunnel == "ssl" or svc.service == "https":
 								targets.append(Target("https", hostname, svc.port))
 							else:
