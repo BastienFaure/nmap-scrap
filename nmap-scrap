@@ -278,8 +278,8 @@ if __name__ == "__main__":
 			if args.save:
 				suffix = ''
 				if args.start:
-					suffix += slugify(unicode(start))
-				suffix += slugify(unicode(str(datetime.now())))
+					suffix += slugify(start)
+				suffix += slugify(str(datetime.now()))
 				httpgrabber.report.save(suffix)
 
 			if args.screen:
