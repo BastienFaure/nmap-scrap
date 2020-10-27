@@ -138,6 +138,15 @@ class ScrapReport(object):
 			output += '\n\n'
 			for response in self.values[code]:
 				output += "  * %s\n" % str(response)
+				if code == 401:
+					if "www-authenticate" in response.response.headers._store:
+						auth_header = f"{response.response.headers['www-authenticate']}"
+						auth_type = auth_header.strip().split(" ")[0].lower()
+						if auth_type in ["basic", "digest"]:
+							url = furl(response.url)
+							output += f"\thydra -L logins.lst -P passwords.lst -t 1 -f -vV {url.host} -s {url.port} http-get {url.url}\n"
+						else:
+							output += f"\t{auth_header}\n"
 			output += '\n'
 			return output
 
