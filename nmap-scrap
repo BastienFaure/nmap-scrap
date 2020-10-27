@@ -204,7 +204,7 @@ class HTTPGrabber(object):
 			self.grab(Target(url.scheme, url.hostname, url.port), redir_path)
 
 	def grab(self, target, path=None):
-		self.logger.warn(target)
+		self.logger.warning(target)
 
 		try:
 			if path is not None:
