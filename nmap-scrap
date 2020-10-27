@@ -82,7 +82,7 @@ class HTTPResult(object):
 
 	@property
 	def url(self):
-		return self.response.url
+		return furl(self.response.url).url
 
 	def __repr__(self):
 		return "[%s] <%s>" % (self.response.status_code, self.url)
@@ -90,7 +90,7 @@ class HTTPResult(object):
 	def __str__(self):
 		if self.response.is_redirect:
 			s = requests.session()
-			redirect = s.get_redirect_target(self.response)
+			redirect = furl(s.get_redirect_target(self.response)).url
 			return "%s => %s (%s bytes)" % (self.url, redirect, len(self.response.text))
 		else:
 			return "%s (%s bytes)" % (self.url, len(self.response.text))
