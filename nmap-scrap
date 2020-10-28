@@ -65,7 +65,7 @@ class Target(object):
 
 	def request(self, path):
 		if path:
-			r = requests.get(str(self.url / path), verify=False, timeout=5, headers=headers, allow_redirects=True)
+			r = requests.get(str(self.url.join(path)), verify=False, timeout=5, headers=headers, allow_redirects=True)
 		else:
 			r = requests.get(str(self), verify=False, timeout=5, headers=headers, allow_redirects=True)
 		return r
@@ -290,7 +290,9 @@ if __name__ == "__main__":
 					os.mkdir("screenshots")
 
 				for url in httpgrabber.report.urls:
-					subprocess.call([os.path.dirname(__file__) + "/massws", "-s", "-o", "screenshots/%s.png" % "".join(c for c in url.replace("://", "_").replace("/", "_").replace(":", "_") if c in valid_chars), url])
+					screenshot_path = "".join(c for c in url.replace("://", "_").replace("/", "_").replace(":", "_") if c in valid_chars)
+					screen_cmd = [os.path.dirname(__file__) + "/massws", "-s", "-o", "screenshots/%s.png" % screenshot_path, url]
+					subprocess.call(screen_cmd)
 	elif args.subparser_name == "port":
 		for nmap_file in args.xml_file:
 			nmap_report = NmapParser.parse_fromfile(nmap_file)

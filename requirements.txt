@@ -7,3 +7,4 @@ slugify
 datetime
 multiprocessing
 python-libnmap
+furl
