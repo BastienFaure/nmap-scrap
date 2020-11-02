@@ -252,9 +252,11 @@ if __name__ == "__main__":
 			start = args.start
 			for host in nmap_report.hosts:
 				for svc in host.services:
-					if (svc.service == "http" or svc.service == "https") and svc.state == "open":
+					if ("http" in svc.service) and svc.state == "open":
 						for hostname in [host.address] + list(set(host.hostnames)):
-							if svc.tunnel == "ssl" or svc.service == "https":
+							if hostname.endswith('.'):
+								hostname = hostname[:-1]
+							if svc.tunnel == "ssl" or ("https" in svc.service):
 								targets.append(Target("https", hostname, svc.port))
 							else:
 								targets.append(Target("http", hostname, svc.port))
