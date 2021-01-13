@@ -41,6 +41,7 @@ def get_meta_redirect(resp):
 	match = redirect_re.search(resp.text)
 	if match:
 		url = urljoin(resp.url, match.groups()[0].strip())
+		print(url)
 	else:
 		url = None
 	return url
@@ -253,7 +254,7 @@ if __name__ == "__main__":
 			for host in nmap_report.hosts:
 				for svc in host.services:
 					if ("http" in svc.service) and svc.state == "open":
-						for hostname in list(set([host.address] + list(map(lambda x: x.name, set(host.hostnames))))):
+						for hostname in list(set([host.address] + list(set(host.hostnames)))):
 							if hostname.endswith('.'):
 								hostname = hostname[:-1]
 							if svc.tunnel == "ssl" or ("https" in svc.service):
