@@ -37,11 +37,11 @@ NB_THREADS = 20
 
 
 def get_meta_redirect(resp):
-	redirect_re = re.compile('<meta[^>]*?url=(.*?)["\']', re.IGNORECASE)
+	redirect_re = re.compile('<meta http-equiv[^>]*?url=[\'"]*([^>]*?)[\'"].*>', re.IGNORECASE)
 	match = redirect_re.search(resp.text)
+	url = urljoin(resp.url, match.groups()[0].strip())
 	if match:
 		url = urljoin(resp.url, match.groups()[0].strip())
-		print(url)
 	else:
 		url = None
 	return url
