@@ -1,12 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # coding: utf8
 
 import logging
 from logging.handlers import RotatingFileHandler
-import uuid
 import argparse
 import subprocess
-import progressbar
 from urllib.parse import urlparse, urljoin
 from furl import furl
 import re
@@ -17,11 +15,7 @@ from slugify import slugify
 from datetime import datetime
 from tqdm import tqdm
 import urllib3
-import codecs
-import time
-import sys
 import os
-import copy
 from multiprocessing.dummy import Pool as ThreadPool
 from libnmap.parser import NmapParser
 
@@ -237,13 +231,14 @@ if __name__ == "__main__":
 	http_parser.add_argument("--screen", help="Takes a screenshot of each http service", action="store_true", required=False)
 	http_parser.add_argument("--save", help="Persistent output", required=False, action="store_true")
 	http_parser.add_argument("--threads", "-t", help="Number of threads to run", required=False, type=int, default=20)
+	http_parser.add_argument("xml_file", help="The nmap XML output", nargs='+')
 
 	# port subparser
 	port_parser = subparsers.add_parser('port', help='Returns a listing based on port state')
 	port_parser.add_argument("--port", "-p", type=int, help="", required=False)
 	port_parser.add_argument("--state", "-s", type=str, help="", required=False)
+	port_parser.add_argument("xml_file", help="The nmap XML output", nargs='+')
 
-	parser.add_argument("xml_file", help="The nmap XML output", nargs='+')
 	args = parser.parse_args()
 	targets = []
 	if args.subparser_name == "http":
@@ -262,40 +257,41 @@ if __name__ == "__main__":
 							else:
 								targets.append(Target("http", hostname, svc.port))
 
-			total = len(targets)
-			httpgrabber = HTTPGrabber(args.start)
+		total = len(targets)
+		httpgrabber = HTTPGrabber(args.start)
 
-			pool = ThreadPool(args.threads)
-			print("[%s] Found %d http services" % (colored('*', "green"), len(targets)))
-			print("[%s] Launching %s threads" % (colored('!', "red"), args.threads))
-			with tqdm(targets, ncols=50, bar_format="{percentage:1.0f}%| {bar} | {n_fmt}/{total_fmt}") as pbar:
-				for _ in pool.imap_unordered(httpgrabber.grab, targets):
-					pbar.update()
-			pool.close()
-			pool.join()
+		pool = ThreadPool(args.threads)
+		print("[%s] Found %d http services" % (colored('*', "green"), len(targets)))
+		print("[%s] Launching %s threads" % (colored('!', "red"), args.threads))
+		with tqdm(targets, ncols=50, bar_format="{percentage:1.0f}%| {bar} | {n_fmt}/{total_fmt}") as pbar:
+			for _ in pool.imap_unordered(httpgrabber.grab, targets):
+				pbar.update()
+		pool.close()
+		pool.join()
 
-			if args.hc:
-				httpgrabber.report.hide_code(args.hc)
+		if args.hc:
+			httpgrabber.report.hide_code(args.hc)
 
-			if args.sc:
-				httpgrabber.report.show_code(args.sc)
-			print(httpgrabber.report)
+		if args.sc:
+			httpgrabber.report.show_code(args.sc)
+		print(httpgrabber.report)
 
-			if args.save:
-				suffix = ''
-				if args.start:
-					suffix += slugify(start)
-				suffix += slugify(str(datetime.now()))
-				httpgrabber.report.save(suffix)
+		if args.save:
+			suffix = ''
+			if args.start:
+				suffix += slugify(start)
+			suffix += slugify(str(datetime.now()))
+			httpgrabber.report.save(suffix)
 
-			if args.screen:
-				if not os.path.isdir("screenshots"):
-					os.mkdir("screenshots")
+		if args.screen:
+			if not os.path.isdir("screenshots"):
+				os.mkdir("screenshots")
 
-				for url in httpgrabber.report.urls:
-					screenshot_path = "".join(c for c in url.replace("://", "_").replace("/", "_").replace(":", "_") if c in valid_chars)
-					screen_cmd = [os.path.dirname(__file__) + "/massws", "-s", "-o", "screenshots/%s.png" % screenshot_path, url]
-					subprocess.call(screen_cmd)
+			for url in httpgrabber.report.urls:
+				screenshot_path = "".join(c for c in url.replace("://", "_").replace("/", "_").replace(":", "_") if c in valid_chars)
+				screen_cmd = ('/usr/bin/google-chrome --headless --window-size=1920,1080 --ignore-certificate-errors --screenshot --incognito --disable-gpu --disable-crash-reporter --disable-notifications --no-first-run --disable-infobars --disable-sync --no-default-browser-check --proxy-server=http://127.0.0.1:8080 %s --screenshot=screenshots/%s' % (url, screenshot_path)).split()
+				subprocess.call(screen_cmd)
+
 	elif args.subparser_name == "port":
 		for nmap_file in args.xml_file:
 			nmap_report = NmapParser.parse_fromfile(nmap_file)
