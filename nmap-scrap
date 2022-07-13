@@ -42,6 +42,8 @@ def get_meta_redirect(resp):
 	url = urljoin(resp.url, match.groups()[0].strip())
 	if match:
 		url = urljoin(resp.url, match.groups()[0].strip())
+		if url == resp.url:
+			url = None
 	else:
 		url = None
 	return url
@@ -63,6 +65,12 @@ class Target(object):
 
 	def __repr__(self):
 		return str(self)
+
+	def __eq__(self, other):
+		return str(self) == str(other)
+
+	def __hash__(self):
+		return hash(str(self))
 
 	def request(self, path):
 		if path:
@@ -91,7 +99,10 @@ class HTTPResult(object):
 	def __str__(self):
 		if self.response.is_redirect:
 			s = requests.session()
-			redirect = furl(s.get_redirect_target(self.response)).url
+			try:
+				redirect = furl(s.get_redirect_target(self.response)).url
+			except Exception:
+				redirect = s.get_redirect_target(self.response)
 			return "%s => %s (%s bytes)" % (self.url, redirect, len(self.response.text))
 		else:
 			return "%s (%s bytes)" % (self.url, len(self.response.text))
@@ -244,8 +255,9 @@ if __name__ == "__main__":
 	port_parser.add_argument("--state", "-s", type=str, help="", required=False)
 
 	parser.add_argument("xml_file", help="The nmap XML output", nargs='+')
+	args, unknown = parser.parse_known_args()
 	args = parser.parse_args()
-	targets = []
+	targets = set()
 	if args.subparser_name == "http":
 		for nmap_file in args.xml_file:
 			print("[%s] Parsing file %s" % (colored("*", "green"), nmap_file))
@@ -254,14 +266,16 @@ if __name__ == "__main__":
 			for host in nmap_report.hosts:
 				for svc in host.services:
 					if ("http" in svc.service) and svc.state == "open":
-						for hostname in list(set([host.address] + list(set(host.hostnames)))):
+						for hostname in list(set([host.address] + list(set(map(lambda x: x.name, host.hostnames))))):
 							if hostname.endswith('.'):
 								hostname = hostname[:-1]
 							if svc.tunnel == "ssl" or ("https" in svc.service):
-								targets.append(Target("https", hostname, svc.port))
+								targets.add(Target("https", hostname, svc.port))
 							else:
-								targets.append(Target("http", hostname, svc.port))
+								targets.add(Target("http", hostname, svc.port))
 
+			targets = list(targets)
+			print(targets)
 			total = len(targets)
 			httpgrabber = HTTPGrabber(args.start)
 
