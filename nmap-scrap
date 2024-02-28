@@ -1,12 +1,12 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # coding: utf8
 
 import logging
+import shutil
 from logging.handlers import RotatingFileHandler
-import uuid
+import tempfile
 import argparse
 import subprocess
-import progressbar
 from urllib.parse import urlparse, urljoin
 from furl import furl
 import re
@@ -17,11 +17,7 @@ from slugify import slugify
 from datetime import datetime
 from tqdm import tqdm
 import urllib3
-import codecs
-import time
-import sys
 import os
-import copy
 from multiprocessing.dummy import Pool as ThreadPool
 from libnmap.parser import NmapParser
 
@@ -178,10 +174,13 @@ class ScrapReport(object):
 		return output
 
 	def save(self, suffix):
-		with open("retcodes_" + suffix, 'w') as outfile:
+		self.retcodes_path = f"retcodes_{suffix}"
+		self.urls_path = f"urls_{suffix}"
+
+		with open(self.retcodes_path, 'w') as outfile:
 			outfile.write(repr(self))
 
-		with open("urls_" + suffix, 'w') as outfile:
+		with open(self.urls_path, 'w') as outfile:
 			for url in self.urls:
 				outfile.write("%s\n" % url)
 
@@ -248,14 +247,14 @@ if __name__ == "__main__":
 	http_parser.add_argument("--screen", help="Takes a screenshot of each http service", action="store_true", required=False)
 	http_parser.add_argument("--save", help="Persistent output", required=False, action="store_true")
 	http_parser.add_argument("--threads", "-t", help="Number of threads to run", required=False, type=int, default=20)
+	http_parser.add_argument("xml_file", help="The nmap XML output", nargs='+')
 
 	# port subparser
 	port_parser = subparsers.add_parser('port', help='Returns a listing based on port state')
 	port_parser.add_argument("--port", "-p", type=int, help="", required=False)
 	port_parser.add_argument("--state", "-s", type=str, help="", required=False)
+	port_parser.add_argument("xml_file", help="The nmap XML output", nargs='+')
 
-	parser.add_argument("xml_file", help="The nmap XML output", nargs='+')
-	args, unknown = parser.parse_known_args()
 	args = parser.parse_args()
 	targets = set()
 	if args.subparser_name == "http":
@@ -274,42 +273,45 @@ if __name__ == "__main__":
 							else:
 								targets.add(Target("http", hostname, svc.port))
 
-			targets = list(targets)
-			print(targets)
-			total = len(targets)
-			httpgrabber = HTTPGrabber(args.start)
+		total = len(targets)
+		httpgrabber = HTTPGrabber(args.start)
 
-			pool = ThreadPool(args.threads)
-			print("[%s] Found %d http services" % (colored('*', "green"), len(targets)))
-			print("[%s] Launching %s threads" % (colored('!', "red"), args.threads))
-			with tqdm(targets, ncols=50, bar_format="{percentage:1.0f}%| {bar} | {n_fmt}/{total_fmt}") as pbar:
-				for _ in pool.imap_unordered(httpgrabber.grab, targets):
-					pbar.update()
-			pool.close()
-			pool.join()
+		pool = ThreadPool(args.threads)
+		print("[%s] Found %d http services" % (colored('*', "green"), len(targets)))
+		print("[%s] Launching %s threads" % (colored('!', "red"), args.threads))
+		with tqdm(targets, ncols=50, bar_format="{percentage:1.0f}%| {bar} | {n_fmt}/{total_fmt}") as pbar:
+			for _ in pool.imap_unordered(httpgrabber.grab, targets):
+				pbar.update()
+		pool.close()
+		pool.join()
 
-			if args.hc:
-				httpgrabber.report.hide_code(args.hc)
+		if args.hc:
+			httpgrabber.report.hide_code(args.hc)
 
-			if args.sc:
-				httpgrabber.report.show_code(args.sc)
-			print(httpgrabber.report)
+		if args.sc:
+			httpgrabber.report.show_code(args.sc)
+		print(httpgrabber.report)
 
-			if args.save:
-				suffix = ''
-				if args.start:
-					suffix += slugify(start)
-				suffix += slugify(str(datetime.now()))
-				httpgrabber.report.save(suffix)
+		if args.save:
+			suffix = ''
+			if args.start:
+				suffix += slugify(start)
+			suffix += slugify(str(datetime.now()))
+			httpgrabber.report.save(suffix)
 
-			if args.screen:
-				if not os.path.isdir("screenshots"):
-					os.mkdir("screenshots")
+		if args.screen:
+			gowitness_path = shutil.which("gowitness")
+			if gowitness_path:
+				with tempfile.NamedTemporaryFile(mode="w") as tmp:
+					# write urls to temp file
+					tmp.writelines(httpgrabber.report.urls)
+					tmp.flush()
+					screens_cmd = ["gowitness", "file", "-f", tmp.name]
+					subprocess.call(screens_cmd)
+			else:
+				print("[%s] gowitness is not installed or not available in the path, please check: https://github.com/sensepost/gowitness" % colored('!', "red"))
 
-				for url in httpgrabber.report.urls:
-					screenshot_path = "".join(c for c in url.replace("://", "_").replace("/", "_").replace(":", "_") if c in valid_chars)
-					screen_cmd = [os.path.dirname(__file__) + "/massws", "-s", "-o", "screenshots/%s.png" % screenshot_path, url]
-					subprocess.call(screen_cmd)
+
 	elif args.subparser_name == "port":
 		for nmap_file in args.xml_file:
 			nmap_report = NmapParser.parse_fromfile(nmap_file)
