@@ -2,7 +2,9 @@
 # coding: utf8
 
 import logging
+import shutil
 from logging.handlers import RotatingFileHandler
+import tempfile
 import argparse
 import subprocess
 from urllib.parse import urlparse, urljoin
@@ -161,10 +163,13 @@ class ScrapReport(object):
 		return output
 
 	def save(self, suffix):
-		with open("retcodes_" + suffix, 'w') as outfile:
+		self.retcodes_path = f"retcodes_{suffix}"
+		self.urls_path = f"urls_{suffix}"
+
+		with open(self.retcodes_path, 'w') as outfile:
 			outfile.write(repr(self))
 
-		with open("urls_" + suffix, 'w') as outfile:
+		with open(self.urls_path, 'w') as outfile:
 			for url in self.urls:
 				outfile.write("%s\n" % url)
 
@@ -250,6 +255,7 @@ if __name__ == "__main__":
 				for svc in host.services:
 					if ("http" in svc.service) and svc.state == "open":
 						for hostname in list(set([host.address] + list(set(host.hostnames)))):
+							hostname = str(hostname)
 							if hostname.endswith('.'):
 								hostname = hostname[:-1]
 							if svc.tunnel == "ssl" or ("https" in svc.service):
@@ -284,13 +290,17 @@ if __name__ == "__main__":
 			httpgrabber.report.save(suffix)
 
 		if args.screen:
-			if not os.path.isdir("screenshots"):
-				os.mkdir("screenshots")
+			gowitness_path = shutil.which("gowitness")
+			if gowitness_path:
+				with tempfile.NamedTemporaryFile(mode="w") as tmp:
+					# write urls to temp file
+					tmp.writelines(httpgrabber.report.urls)
+					tmp.flush()
+					screens_cmd = ["gowitness", "file", "-f", tmp.name]
+					subprocess.call(screens_cmd)
+			else:
+				print("[%s] gowitness is not installed or not available in the path, please check: https://github.com/sensepost/gowitness" % colored('!', "red"))
 
-			for url in httpgrabber.report.urls:
-				screenshot_path = "".join(c for c in url.replace("://", "_").replace("/", "_").replace(":", "_") if c in valid_chars)
-				screen_cmd = ('/usr/bin/google-chrome --headless --window-size=1920,1080 --ignore-certificate-errors --screenshot --incognito --disable-gpu --disable-crash-reporter --disable-notifications --no-first-run --disable-infobars --disable-sync --no-default-browser-check --proxy-server=http://127.0.0.1:8080 %s --screenshot=screenshots/%s' % (url, screenshot_path)).split()
-				subprocess.call(screen_cmd)
 
 	elif args.subparser_name == "port":
 		for nmap_file in args.xml_file:
